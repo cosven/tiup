@@ -117,7 +117,7 @@ Examples:
 				// when user type a wrong subcommand, tiup will recognize the subcomand as a version
 				// for exmaple, user type `bin/tiup-playground xxx`, tup will use xxx as a version,
 				// which is unexpected, we try to raise error as soon as possible
-				if args[0] != "nightly" || strings.HasPrefix(args[0], "v") {
+				if args[0] != "nightly" && !strings.HasPrefix(args[0], "v") {
 					return errors.Errorf("unknown subcommand %s", args[0])
 				}
 

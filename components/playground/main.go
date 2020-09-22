@@ -113,6 +113,13 @@ Examples:
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) > 0 {
+				// when user type a wrong subcommand, tiup will recognize the subcomand as a version
+				// for exmaple, user type `bin/tiup-playground xxx`, tup will use xxx as a version,
+				// which is unexpected, we try to raise error as soon as possible
+				if args[0] != "nightly" || strings.HasPrefix(args[0], "v") {
+					return errors.Errorf("unknown subcommand %s", args[0])
+				}
+
 				opt.version = args[0]
 			}
 
@@ -226,6 +233,8 @@ Examples:
 	rootCmd.AddCommand(newDisplay())
 	rootCmd.AddCommand(newScaleOut())
 	rootCmd.AddCommand(newScaleIn())
+	rootCmd.AddCommand(newPartition())
+	rootCmd.AddCommand(newUnpartition())
 
 	return rootCmd.Execute()
 }

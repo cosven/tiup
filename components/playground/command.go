@@ -32,9 +32,11 @@ type CommandType string
 
 // types of CommandType
 const (
-	ScaleInCommandType  CommandType = "scale-in"
-	ScaleOutCommandType CommandType = "scale-out"
-	DisplayCommandType  CommandType = "display"
+	ScaleInCommandType     CommandType = "scale-in"
+	ScaleOutCommandType    CommandType = "scale-out"
+	DisplayCommandType     CommandType = "display"
+	PartitionCommandType   CommandType = "partition"
+	UnpartitionCommandType CommandType = "unpartition"
 )
 
 // Command send to Playground.
@@ -191,6 +193,58 @@ func newDisplay() *cobra.Command {
 		},
 	}
 	return cmd
+}
+
+func newPartition() *cobra.Command {
+	var pid int
+
+	cmd := &cobra.Command{
+		Use:    "partition one tikv instance.",
+		Hidden: false,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return togglePartition(pid, true)
+		},
+	}
+
+	cmd.Flags().IntVarP(&pid, "pid", "", 0, "pid of instance to be partitioned")
+
+	return cmd
+}
+
+func newUnpartition() *cobra.Command {
+	var pid int
+
+	cmd := &cobra.Command{
+		Use:    "unpartition one tikv instance.",
+		Hidden: false,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return togglePartition(pid, false)
+		},
+	}
+
+	cmd.Flags().IntVarP(&pid, "pid", "", 0, "pid of instance to be unpartitioned")
+
+	return cmd
+}
+
+func togglePartition(pid int, on bool) error {
+	port, err := targetTag()
+	if err != nil {
+		return errors.AddStack(err)
+	}
+	var cmdType CommandType
+	if on {
+		cmdType = PartitionCommandType
+	} else {
+		cmdType = UnpartitionCommandType
+	}
+	c := Command{
+		CommandType: cmdType,
+		PID:         pid,
+	}
+
+	addr := "127.0.0.1:" + strconv.Itoa(port)
+	return sendCommandsAndPrintResult([]Command{c}, addr)
 }
 
 func scaleIn(pids []int) error {

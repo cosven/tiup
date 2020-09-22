@@ -33,6 +33,7 @@ import (
 	"github.com/fatih/color"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/pingcap/errors"
+	"github.com/pingcap/log"
 	"github.com/pingcap/tiup/components/playground/instance"
 	"github.com/pingcap/tiup/pkg/cliutil/progress"
 	"github.com/pingcap/tiup/pkg/cluster/api"
@@ -130,7 +131,7 @@ Examples:
 
 			port, err := utils.GetFreePort("0.0.0.0", 9527)
 			if err != nil {
-				return errors.AddStack(err)
+
 			}
 			err = dumpPort(filepath.Join(dataDir, "port"), port)
 			p := NewPlayground(dataDir, port)
@@ -147,6 +148,19 @@ Examples:
 			var booted uint32
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
+
+			// init pingcap/log logger
+			// redirect log to file: proxy-log
+			logConfig := log.Config{
+				File: log.FileLogConfig{
+					Filename: filepath.Join(dataDir, "proxy-log"),
+				},
+			}
+			lg, props, err := log.InitLogger(&logConfig)
+			if err != nil {
+				return errors.AddStack(err)
+			}
+			log.ReplaceGlobals(lg, props)
 
 			go func() {
 				sc := make(chan os.Signal, 1)
@@ -235,6 +249,7 @@ Examples:
 	rootCmd.AddCommand(newScaleIn())
 	rootCmd.AddCommand(newPartition())
 	rootCmd.AddCommand(newUnpartition())
+	rootCmd.AddCommand(newRestart())
 
 	return rootCmd.Execute()
 }

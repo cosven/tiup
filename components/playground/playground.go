@@ -494,6 +494,37 @@ func (p *Playground) handleUnpartition(w io.Writer, cmd *Command) error {
 	return errors.Errorf("tikv(%d): instance not found", pid)
 }
 
+func (p *Playground) handleRestart(w io.Writer, cmd *Command) error {
+	pid := cmd.PID
+	// TODO: read from the cmd options
+	sig := syscall.SIGKILL
+
+	for _, inst := range p.startedInstances {
+		if inst.Pid() == pid {
+
+			componentID := inst.Component()
+			switch componentID {
+			case "pd":
+				// HLEP: maybe we need not update inst.pds?
+				ins := inst.(*instance.PDInstance)
+				if p.booted {
+					ins.Join(p.pds)
+				}
+			case "tidb", "tikv", "tiflash", "ticdc", "pump", "drainer":
+			default:
+				return errors.Errorf("can't restart component: %s", componentID)
+			}
+
+			_ = syscall.Kill(inst.Pid(), sig)
+			_ = inst.Wait()
+			fmt.Printf("%s(%d) has been killed, will start it\n", inst.Component(), inst.Pid())
+
+			return p.startInstance(context.Background(), inst)
+		}
+	}
+	return errors.Errorf("pid(%d): instance not found", pid)
+}
+
 func (p *Playground) handleCommand(cmd *Command, w io.Writer) error {
 	fmt.Printf("receive command: %s\n", cmd.CommandType)
 	switch cmd.CommandType {
@@ -507,6 +538,8 @@ func (p *Playground) handleCommand(cmd *Command, w io.Writer) error {
 		return p.handlePartition(w, cmd)
 	case UnpartitionCommandType:
 		return p.handleUnpartition(w, cmd)
+	case RestartCommandType:
+		return p.handleRestart(w, cmd)
 	}
 
 	return nil

@@ -37,6 +37,7 @@ const (
 	DisplayCommandType     CommandType = "display"
 	PartitionCommandType   CommandType = "partition"
 	UnpartitionCommandType CommandType = "unpartition"
+	RestartCommandType     CommandType = "restart"
 )
 
 // Command send to Playground.
@@ -225,6 +226,36 @@ func newUnpartition() *cobra.Command {
 	cmd.Flags().IntVarP(&pid, "pid", "", 0, "pid of instance to be unpartitioned")
 
 	return cmd
+}
+
+func newRestart() *cobra.Command {
+	var pid int
+
+	cmd := &cobra.Command{
+		Use:    "restart one instance.",
+		Hidden: false,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return restart(pid)
+		},
+	}
+
+	cmd.Flags().IntVarP(&pid, "pid", "", 0, "pid of instance to be unpartitioned")
+
+	return cmd
+}
+
+func restart(pid int) error {
+	port, err := targetTag()
+	if err != nil {
+		return errors.AddStack(err)
+	}
+	c := Command{
+		CommandType: RestartCommandType,
+		PID:         pid,
+	}
+
+	addr := "127.0.0.1:" + strconv.Itoa(port)
+	return sendCommandsAndPrintResult([]Command{c}, addr)
 }
 
 func togglePartition(pid int, on bool) error {

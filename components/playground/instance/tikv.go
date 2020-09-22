@@ -24,10 +24,10 @@ import (
 	"time"
 
 	"github.com/pingcap/errors"
+	"github.com/pingcap/log"
 	"github.com/pingcap/tiup/pkg/repository/v0manifest"
 	"github.com/pingcap/tiup/pkg/utils"
 	"go.etcd.io/etcd/v3/pkg/proxy"
-	"go.uber.org/zap"
 )
 
 func startProxyServer(addr string, targetAddr string) (proxy.Server, error) {
@@ -39,9 +39,9 @@ func startProxyServer(addr string, targetAddr string) (proxy.Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	// TODO: it sinces tiup won't save or output log
+	// TODO: it seems that tiup won't save or output log
 	config := proxy.ServerConfig{
-		Logger: zap.L(),
+		Logger: log.L(),
 		From:   *url,
 		To:     *targetUrl,
 	}
@@ -93,23 +93,30 @@ func (inst *TiKVInstance) Addr() string {
 	return fmt.Sprintf("%s:%d", inst.Host, inst.Port)
 }
 
-// startProxy starts proxy servers for Port and StatusPort
+// startProxy starts or resets proxy servers for Port and StatusPort
 func (inst *TiKVInstance) startProxy() error {
-	advertiseUrl := fmt.Sprintf("http://%s:%d", inst.Host, inst.AdvertisePort)
-	url := fmt.Sprintf("http://%s:%d", inst.Host, inst.Port)
-	proxyServer, err := startProxyServer(advertiseUrl, url)
-	if err != nil {
-		return err
+	if server, ok := inst.PortToProxyServer[inst.Port]; ok {
+		server.ResetListener()
+	} else {
+		advertiseUrl := fmt.Sprintf("http://%s:%d", inst.Host, inst.AdvertisePort)
+		url := fmt.Sprintf("http://%s:%d", inst.Host, inst.Port)
+		proxyServer, err := startProxyServer(advertiseUrl, url)
+		if err != nil {
+			return err
+		}
+		inst.PortToProxyServer[inst.Port] = proxyServer
 	}
-	inst.PortToProxyServer[inst.Port] = proxyServer
-
-	advertiseStatusUrl := fmt.Sprintf("http://%s:%d", inst.Host, inst.AdvertiseStatusPort)
-	statusUrl := fmt.Sprintf("http://%s:%d", inst.Host, inst.StatusPort)
-	proxyServer, err = startProxyServer(advertiseStatusUrl, statusUrl)
-	if err != nil {
-		return err
+	if server, ok := inst.PortToProxyServer[inst.StatusPort]; ok {
+		server.ResetListener()
+	} else {
+		advertiseStatusUrl := fmt.Sprintf("http://%s:%d", inst.Host, inst.AdvertiseStatusPort)
+		statusUrl := fmt.Sprintf("http://%s:%d", inst.Host, inst.StatusPort)
+		proxyServer, err := startProxyServer(advertiseStatusUrl, statusUrl)
+		if err != nil {
+			return err
+		}
+		inst.PortToProxyServer[inst.StatusPort] = proxyServer
 	}
-	inst.PortToProxyServer[inst.StatusPort] = proxyServer
 	return nil
 }
 

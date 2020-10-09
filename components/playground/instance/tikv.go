@@ -16,20 +16,56 @@ package instance
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/pingcap/errors"
+	"github.com/pingcap/log"
 	"github.com/pingcap/tiup/pkg/repository/v0manifest"
 	"github.com/pingcap/tiup/pkg/utils"
+	"go.etcd.io/etcd/v3/pkg/proxy"
 )
+
+func startProxyServer(addr string, targetAddr string) (proxy.Server, error) {
+	url, err := url.Parse(addr)
+	if err != nil {
+		return nil, err
+	}
+	targetUrl, err := url.Parse(targetAddr)
+	if err != nil {
+		return nil, err
+	}
+	// TODO: it seems that tiup won't save or output log
+	config := proxy.ServerConfig{
+		Logger: log.L(),
+		From:   *url,
+		To:     *targetUrl,
+	}
+	server := proxy.NewServer(config)
+	select {
+	case err := <-server.Error():
+		return nil, err
+	case <-time.After(time.Second):
+		// wait for server to start
+		return server, nil
+	}
+}
 
 // TiKVInstance represent a running tikv-server
 type TiKVInstance struct {
 	instance
 	pds []*PDInstance
+
+	// Proxy related attributes
+	AdvertisePort int
+	// it seems tikv v3.0.x does not support this arg
+	// AdvertiseStatusPort int
+	PortToProxyServer map[int]proxy.Server
+
 	Process
 }
 
@@ -46,12 +82,43 @@ func NewTiKVInstance(binPath string, dir, host, configPath string, id int, pds [
 			ConfigPath: configPath,
 		},
 		pds: pds,
+
+		AdvertisePort: utils.MustGetFreePort(host, 30160),
+		//AdvertiseStatusPort: utils.MustGetFreePort(host, 30180),
+		PortToProxyServer: make(map[int]proxy.Server),
 	}
 }
 
 // Addr return the address of tikv.
 func (inst *TiKVInstance) Addr() string {
 	return fmt.Sprintf("%s:%d", inst.Host, inst.Port)
+}
+
+// startProxy starts or resets proxy servers for Port and StatusPort
+func (inst *TiKVInstance) startProxy() error {
+	if server, ok := inst.PortToProxyServer[inst.Port]; ok {
+		server.ResetListener()
+	} else {
+		advertiseUrl := fmt.Sprintf("http://%s:%d", inst.Host, inst.AdvertisePort)
+		url := fmt.Sprintf("http://%s:%d", inst.Host, inst.Port)
+		proxyServer, err := startProxyServer(advertiseUrl, url)
+		if err != nil {
+			return err
+		}
+		inst.PortToProxyServer[inst.Port] = proxyServer
+	}
+	//if server, ok := inst.PortToProxyServer[inst.StatusPort]; ok {
+	//	server.ResetListener()
+	//} else {
+	//	advertiseStatusUrl := fmt.Sprintf("http://%s:%d", inst.Host, inst.AdvertiseStatusPort)
+	//	statusUrl := fmt.Sprintf("http://%s:%d", inst.Host, inst.StatusPort)
+	//	proxyServer, err := startProxyServer(advertiseStatusUrl, statusUrl)
+	//	if err != nil {
+	//		return err
+	//	}
+	//	inst.PortToProxyServer[inst.StatusPort] = proxyServer
+	//}
+	return nil
 }
 
 // Start calls set inst.cmd and Start
@@ -68,8 +135,9 @@ func (inst *TiKVInstance) Start(ctx context.Context, version v0manifest.Version)
 	}
 	args := []string{
 		fmt.Sprintf("--addr=%s:%d", inst.Host, inst.Port),
-		fmt.Sprintf("--advertise-addr=%s:%d", advertiseHost(inst.Host), inst.Port),
+		fmt.Sprintf("--advertise-addr=%s:%d", advertiseHost(inst.Host), inst.AdvertisePort),
 		fmt.Sprintf("--status-addr=%s:%d", inst.Host, inst.StatusPort),
+		//fmt.Sprintf("--advertise-status-addr=%s:%d", advertiseHost(inst.Host), inst.AdvertiseStatusPort),
 		fmt.Sprintf("--pd=%s", strings.Join(endpoints, ",")),
 		fmt.Sprintf("--config=%s", inst.ConfigPath),
 		fmt.Sprintf("--data-dir=%s", filepath.Join(inst.Dir, "data")),
@@ -82,6 +150,11 @@ func (inst *TiKVInstance) Start(ctx context.Context, version v0manifest.Version)
 	}
 	logIfErr(inst.Process.SetOutputFile(inst.LogFile()))
 
+	err = inst.startProxy()
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Start proxy for tikv %d:%d\n", inst.AdvertisePort, inst.Port)
 	return inst.Process.Start()
 }
 
@@ -97,7 +170,7 @@ func (inst *TiKVInstance) LogFile() string {
 
 // StoreAddr return the store address of TiKV
 func (inst *TiKVInstance) StoreAddr() string {
-	return fmt.Sprintf("%s:%d", advertiseHost(inst.Host), inst.Port)
+	return fmt.Sprintf("%s:%d", advertiseHost(inst.Host), inst.AdvertisePort)
 }
 
 func (inst *TiKVInstance) checkConfig() error {

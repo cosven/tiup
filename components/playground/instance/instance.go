@@ -55,6 +55,13 @@ type Instance interface {
 	// Wait Should only call this if the instance is started successfully.
 	// The implementation should be safe to call Wait multi times.
 	Wait() error
+
+	//
+	GetPort() int
+}
+
+func (inst *instance) GetPort() int {
+	return inst.Port
 }
 
 func (inst *instance) StatusAddrs() (addrs []string) {

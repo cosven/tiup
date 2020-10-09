@@ -48,6 +48,7 @@ require (
 	github.com/pingcap/go-tpc v1.0.4-0.20200525052430-dc963cdeef62
 	github.com/pingcap/go-ycsb v0.0.0-20200226103513-00ca633a87d8
 	github.com/pingcap/kvproto v0.0.0-20200810113304-6157337686b1
+	github.com/pingcap/log v0.0.0-20200511115504-543df19646ad
 	github.com/pingcap/tidb-insight v0.3.1
 	github.com/prometheus/client_model v0.2.0
 	github.com/prometheus/prom2json v1.3.0
@@ -64,6 +65,7 @@ require (
 	github.com/tj/go-termd v0.0.1
 	github.com/xo/usql v0.7.8
 	go.etcd.io/etcd v0.5.0-alpha.5.0.20191023171146-3cf2f69b5738
+	go.etcd.io/etcd/v3 v3.0.0-00010101000000-000000000000
 	go.uber.org/atomic v1.6.0
 	go.uber.org/zap v1.15.0
 	golang.org/x/crypto v0.0.0-20200204104054-c9f3fb736b72
@@ -85,3 +87,5 @@ require (
 )
 
 replace gopkg.in/yaml.v2 => github.com/july2993/yaml v0.0.0-20200423062752-adcfa5abe2ed
+
+replace go.etcd.io/etcd/v3 => github.com/etcd-io/etcd/v3 v3.3.0-rc.0.0.20200826232710-c20cc05fc548

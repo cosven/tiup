@@ -33,6 +33,7 @@ import (
 	"github.com/fatih/color"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/pingcap/errors"
+	"github.com/pingcap/log"
 	"github.com/pingcap/tiup/components/playground/instance"
 	"github.com/pingcap/tiup/pkg/cliutil/progress"
 	"github.com/pingcap/tiup/pkg/cluster/api"
@@ -113,6 +114,13 @@ Examples:
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) > 0 {
+				// when user type a wrong subcommand, tiup will recognize the subcomand as a version
+				// for exmaple, user type `bin/tiup-playground xxx`, tup will use xxx as a version,
+				// which is unexpected, we try to raise error as soon as possible
+				if args[0] != "nightly" && !strings.HasPrefix(args[0], "v") {
+					return errors.Errorf("unknown subcommand %s", args[0])
+				}
+
 				opt.version = args[0]
 			}
 
@@ -123,7 +131,7 @@ Examples:
 
 			port, err := utils.GetFreePort("0.0.0.0", 9527)
 			if err != nil {
-				return errors.AddStack(err)
+
 			}
 			err = dumpPort(filepath.Join(dataDir, "port"), port)
 			p := NewPlayground(dataDir, port)
@@ -140,6 +148,19 @@ Examples:
 			var booted uint32
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
+
+			// init pingcap/log logger
+			// redirect log to file: proxy-log
+			logConfig := log.Config{
+				File: log.FileLogConfig{
+					Filename: filepath.Join(dataDir, "proxy-log"),
+				},
+			}
+			lg, props, err := log.InitLogger(&logConfig)
+			if err != nil {
+				return errors.AddStack(err)
+			}
+			log.ReplaceGlobals(lg, props)
 
 			go func() {
 				sc := make(chan os.Signal, 1)
@@ -226,6 +247,9 @@ Examples:
 	rootCmd.AddCommand(newDisplay())
 	rootCmd.AddCommand(newScaleOut())
 	rootCmd.AddCommand(newScaleIn())
+	rootCmd.AddCommand(newPartition())
+	rootCmd.AddCommand(newUnpartition())
+	rootCmd.AddCommand(newRestart())
 
 	return rootCmd.Execute()
 }

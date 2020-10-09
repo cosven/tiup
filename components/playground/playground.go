@@ -102,7 +102,7 @@ func (p *Playground) handleDisplay(r io.Writer) (err error) {
 	t := tabby.NewCustom(w)
 
 	// TODO add more info.
-	header := []interface{}{"Pid", "Role", "Uptime"}
+	header := []interface{}{"Pid", "Role", "Uptime", "Port"}
 	t.AddHeader(header...)
 
 	err = p.WalkInstances(func(componentID string, ins instance.Instance) error {
@@ -110,6 +110,7 @@ func (p *Playground) handleDisplay(r io.Writer) (err error) {
 		row[0] = strconv.Itoa(ins.Pid())
 		row[1] = componentID
 		row[2] = ins.Uptime()
+		row[3] = ins.GetPort()
 		t.AddLine(row...)
 		return nil
 	})
@@ -461,6 +462,69 @@ func (p *Playground) handleScaleOut(w io.Writer, cmd *Command) error {
 	return nil
 }
 
+func (p *Playground) handlePartition(w io.Writer, cmd *Command) error {
+	pid := cmd.PID
+	for _, inst := range p.tikvs {
+		if inst.Process.Pid() == pid {
+			if server, ok := inst.PortToProxyServer[inst.Port]; ok {
+				server.BlackholeRx()
+				server.BlackholeTx()
+				fmt.Printf("partition tikv(%d) port(%d)\n", pid, inst.Port)
+				return nil
+			} else {
+				panic("proxy server not started")
+			}
+		}
+	}
+	return errors.Errorf("tikv(%d): instance not found", pid)
+}
+
+func (p *Playground) handleUnpartition(w io.Writer, cmd *Command) error {
+	pid := cmd.PID
+	for _, inst := range p.tikvs {
+		if inst.Process.Pid() == pid {
+			if server, ok := inst.PortToProxyServer[inst.Port]; ok {
+				server.UnblackholeRx()
+				server.UnblackholeTx()
+				fmt.Printf("unpartition tikv(%d) port(%d)\n", pid, inst.Port)
+				return nil
+			}
+		}
+	}
+	return errors.Errorf("tikv(%d): instance not found", pid)
+}
+
+func (p *Playground) handleRestart(w io.Writer, cmd *Command) error {
+	pid := cmd.PID
+	// TODO: read from the cmd options
+	sig := syscall.SIGKILL
+
+	for _, inst := range p.startedInstances {
+		if inst.Pid() == pid {
+
+			componentID := inst.Component()
+			switch componentID {
+			case "pd":
+				// HLEP: maybe we need not update inst.pds?
+				ins := inst.(*instance.PDInstance)
+				if p.booted {
+					ins.Join(p.pds)
+				}
+			case "tidb", "tikv", "tiflash", "ticdc", "pump", "drainer":
+			default:
+				return errors.Errorf("can't restart component: %s", componentID)
+			}
+
+			_ = syscall.Kill(inst.Pid(), sig)
+			_ = inst.Wait()
+			fmt.Printf("%s(%d) has been killed, will start it\n", inst.Component(), inst.Pid())
+
+			return p.startInstance(context.Background(), inst)
+		}
+	}
+	return errors.Errorf("pid(%d): instance not found", pid)
+}
+
 func (p *Playground) handleCommand(cmd *Command, w io.Writer) error {
 	fmt.Printf("receive command: %s\n", cmd.CommandType)
 	switch cmd.CommandType {
@@ -470,6 +534,12 @@ func (p *Playground) handleCommand(cmd *Command, w io.Writer) error {
 		return p.handleScaleIn(w, cmd.PID)
 	case ScaleOutCommandType:
 		return p.handleScaleOut(w, cmd)
+	case PartitionCommandType:
+		return p.handlePartition(w, cmd)
+	case UnpartitionCommandType:
+		return p.handleUnpartition(w, cmd)
+	case RestartCommandType:
+		return p.handleRestart(w, cmd)
 	}
 
 	return nil

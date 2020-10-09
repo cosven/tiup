@@ -170,7 +170,7 @@ func (inst *TiKVInstance) LogFile() string {
 
 // StoreAddr return the store address of TiKV
 func (inst *TiKVInstance) StoreAddr() string {
-	return fmt.Sprintf("%s:%d", advertiseHost(inst.Host), inst.Port)
+	return fmt.Sprintf("%s:%d", advertiseHost(inst.Host), inst.AdvertisePort)
 }
 
 func (inst *TiKVInstance) checkConfig() error {
